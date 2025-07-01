@@ -1,4 +1,3 @@
-<!-- hangul_game_fixed.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -19,11 +18,12 @@
       border: 2px solid #ccc; padding: 5px; border-radius: 8px;
       display: flex; flex-direction: column; align-items: center;
       width: 64px; height: 80px;
+      cursor: pointer;
     }
     .syllable-box.active { border-color: red; box-shadow: 0 0 4px red; }
-    .assembled-char { font-size: 28px; }
+    .assembled-char { font-size: 28px; user-select:none; }
     .slots { display: flex; gap: 4px; margin-top: 4px; }
-    .slot { border: 1px solid #aaa; border-radius: 4px; width: 18px; height: 18px; text-align: center; font-size: 12px; }
+    .slot { border: 1px solid #aaa; border-radius: 4px; width: 18px; height: 18px; text-align: center; font-size: 12px; user-select:none; }
     .highlighted { border-color: red; color: red; font-weight: bold; }
 
     .buttons { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-bottom: 8px; }
@@ -31,9 +31,10 @@
       padding: 10px; font-size: 18px; border-radius: 6px;
       border: 1px solid #aaa; background: #f9f9f9; cursor: pointer;
       width: 50px;
+      user-select:none;
     }
     .position-buttons, .controls { margin: 8px 0; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
-    #result { margin-top: 10px; font-weight: bold; text-align: center; }
+    #result { margin-top: 10px; font-weight: bold; text-align: center; min-height: 24px; }
     button.big { font-size: 16px; padding: 6px 10px; }
   </style>
 </head>
@@ -93,6 +94,7 @@ function init() {
   syllables = Array.from({length: questions[currentQ].answer.length}, () => ({initial:'', medial:'', final:'', assembled:''}));
   confirmed = Array(syllables.length).fill(false);
   document.getElementById('nextBtn').style.display = "none";
+  position = 'initial';
   renderSyllables();
   renderButtons();
   playAudio();
@@ -104,7 +106,12 @@ function renderSyllables() {
   syllables.forEach((s, i) => {
     const box = document.createElement('div');
     box.className = 'syllable-box' + (i === index ? ' active' : '');
-    box.onclick = () => { if (!confirmed[i]) { index = i; renderSyllables(); } };
+    box.onclick = () => {
+      index = i;
+      confirmed[i] = false;   // 點了就視為要重新編輯
+      position = 'initial';   // 每次點選新字，自動切換回初聲
+      renderSyllables();
+    };
     box.innerHTML = `
       <div class="assembled-char">${s.assembled}</div>
       <div class="slots">
@@ -155,7 +162,8 @@ function setPosition(p) {
 }
 
 function confirmSyllable() {
-  if (!syllables[index].initial || !syllables[index].medial) {
+  const s = syllables[index];
+  if (!s.initial || !s.medial) {
     alert("請完成拼音！");
     return;
   }
@@ -163,12 +171,12 @@ function confirmSyllable() {
   for (let i = 0; i < syllables.length; i++) {
     if (!confirmed[i]) {
       index = i;
+      position = 'initial';  // 換字也回初聲
       renderSyllables();
       return;
     }
   }
-  index = 0;
-  renderSyllables();
+  renderSyllables(); // 都完成也更新畫面
 }
 
 function deleteChar() {
@@ -179,10 +187,12 @@ function deleteChar() {
 }
 
 function deleteSyllable() {
-  if (syllables.length > 1) {
-    syllables.pop();
-    confirmed.pop();
-    index = Math.max(0, syllables.length - 1);
+  if (syllables.length > 0) {
+    syllables.splice(index, 1);          // 移除當前字
+    confirmed.splice(index, 1);
+    // 補一個空白字
+    syllables.splice(index, 0, { initial: '', medial: '', final: '', assembled: '' });
+    confirmed.splice(index, 0, false);
     renderSyllables();
   }
 }
@@ -212,6 +222,8 @@ function submitAnswer() {
 function nextQuestion() {
   currentQ = (currentQ + 1) % questions.length;
   document.getElementById('result').textContent = '';
+  index = 0;
+  position = 'initial';
   init();
 }
 
