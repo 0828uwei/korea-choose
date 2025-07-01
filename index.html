@@ -1,0 +1,227 @@
+<!-- hangul_game_fixed.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>韓文字拼字遊戲</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; margin: 0; background: #fff; color: #333; }
+    .container {
+      max-width: 480px; margin: auto; padding: 10px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    h2 { margin-bottom: 5px; }
+    #question { margin-bottom: 5px; }
+    #syllableArea { display: flex; gap: 5px; margin: 10px 0; flex-wrap: wrap; justify-content: center; }
+    .syllable-box {
+      border: 2px solid #ccc; padding: 5px; border-radius: 8px;
+      display: flex; flex-direction: column; align-items: center;
+      width: 64px; height: 80px;
+    }
+    .syllable-box.active { border-color: red; box-shadow: 0 0 4px red; }
+    .assembled-char { font-size: 28px; }
+    .slots { display: flex; gap: 4px; margin-top: 4px; }
+    .slot { border: 1px solid #aaa; border-radius: 4px; width: 18px; height: 18px; text-align: center; font-size: 12px; }
+    .highlighted { border-color: red; color: red; font-weight: bold; }
+
+    .buttons { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-bottom: 8px; }
+    .buttons button {
+      padding: 10px; font-size: 18px; border-radius: 6px;
+      border: 1px solid #aaa; background: #f9f9f9; cursor: pointer;
+      width: 50px;
+    }
+    .position-buttons, .controls { margin: 8px 0; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+    #result { margin-top: 10px; font-weight: bold; text-align: center; }
+    button.big { font-size: 16px; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>韓文字拼字遊戲</h2>
+  <div id="question">第 <span id="currentQ">1</span> / 10 題</div>
+  <button onclick="playAudio()">▶️ 播放音檔</button>
+  <audio id="audio"></audio>
+
+  <div id="syllableArea"></div>
+  <div class="position-buttons">
+    <button onclick="setPosition('initial')">初聲</button>
+    <button onclick="setPosition('medial')">中聲</button>
+    <button onclick="setPosition('final')">終聲</button>
+  </div>
+
+  <div class="buttons" id="consonants"></div>
+  <div class="buttons" id="vowels"></div>
+
+  <div class="controls">
+    <button onclick="confirmSyllable()">✅ 確認此字</button>
+    <button onclick="deleteChar()">刪除拼音</button>
+    <button onclick="deleteSyllable()">刪除字</button>
+    <button onclick="submitAnswer()">送出</button>
+    <button id="nextBtn" onclick="nextQuestion()" style="display:none">下一題</button>
+  </div>
+
+  <div id="result"></div>
+</div>
+
+<script>
+const questions = [
+  { answer: "사과", audio: "apple.mp3" },
+  { answer: "학교", audio: "school.mp3" },
+  { answer: "사랑", audio: "love.mp3" },
+  { answer: "친구", audio: "friend.mp3" },
+  { answer: "가족", audio: "family.mp3" },
+  { answer: "한국", audio: "korea.mp3" },
+  { answer: "음악", audio: "music.mp3" },
+  { answer: "영화", audio: "movie.mp3" },
+  { answer: "커피", audio: "coffee.mp3" },
+  { answer: "자동차", audio: "car.mp3" }
+];
+const initials = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const vowels = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+const finals = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+let currentQ = 0, wrongCount = 0, position = 'initial', index = 0;
+let syllables = [], confirmed = [];
+
+function init() {
+  document.getElementById('currentQ').textContent = currentQ + 1;
+  wrongCount = 0;
+  index = 0;
+  confirmed = [];
+  syllables = Array.from({length: questions[currentQ].answer.length}, () => ({initial:'', medial:'', final:'', assembled:''}));
+  confirmed = Array(syllables.length).fill(false);
+  document.getElementById('nextBtn').style.display = "none";
+  renderSyllables();
+  renderButtons();
+  playAudio();
+}
+
+function renderSyllables() {
+  const area = document.getElementById('syllableArea');
+  area.innerHTML = '';
+  syllables.forEach((s, i) => {
+    const box = document.createElement('div');
+    box.className = 'syllable-box' + (i === index ? ' active' : '');
+    box.onclick = () => { if (!confirmed[i]) { index = i; renderSyllables(); } };
+    box.innerHTML = `
+      <div class="assembled-char">${s.assembled}</div>
+      <div class="slots">
+        <div class="slot${position==='initial'&&i===index?' highlighted':''}">${s.initial}</div>
+        <div class="slot${position==='medial'&&i===index?' highlighted':''}">${s.medial}</div>
+        <div class="slot${position==='final'&&i===index?' highlighted':''}">${s.final}</div>
+      </div>`;
+    area.appendChild(box);
+  });
+}
+
+function renderButtons() {
+  const con = document.getElementById('consonants');
+  const vow = document.getElementById('vowels');
+  con.innerHTML = ''; vow.innerHTML = '';
+  initials.forEach(ch => {
+    const b = document.createElement('button');
+    b.textContent = ch;
+    b.onclick = () => applyJamo(ch);
+    con.appendChild(b);
+  });
+  vowels.forEach(ch => {
+    const b = document.createElement('button');
+    b.textContent = ch;
+    b.onclick = () => applyJamo(ch);
+    vow.appendChild(b);
+  });
+}
+
+function applyJamo(ch) {
+  if (confirmed[index]) return;
+  const s = syllables[index];
+  s[position] = ch;
+  if (s.initial && s.medial) {
+    const i = initials.indexOf(s.initial);
+    const m = vowels.indexOf(s.medial);
+    const f = s.final ? finals.indexOf(s.final) : 0;
+    if (i >= 0 && m >= 0 && f >= 0) {
+      s.assembled = String.fromCharCode(0xAC00 + i*21*28 + m*28 + f);
+    }
+  }
+  renderSyllables();
+}
+
+function setPosition(p) {
+  position = p;
+  renderSyllables();
+}
+
+function confirmSyllable() {
+  if (!syllables[index].initial || !syllables[index].medial) {
+    alert("請完成拼音！");
+    return;
+  }
+  confirmed[index] = true;
+  for (let i = 0; i < syllables.length; i++) {
+    if (!confirmed[i]) {
+      index = i;
+      renderSyllables();
+      return;
+    }
+  }
+  index = 0;
+  renderSyllables();
+}
+
+function deleteChar() {
+  if (confirmed[index]) return;
+  syllables[index][position] = '';
+  syllables[index].assembled = '';
+  renderSyllables();
+}
+
+function deleteSyllable() {
+  if (syllables.length > 1) {
+    syllables.pop();
+    confirmed.pop();
+    index = Math.max(0, syllables.length - 1);
+    renderSyllables();
+  }
+}
+
+function submitAnswer() {
+  const incomplete = syllables.some(s => !s.initial || !s.medial);
+  if (incomplete) {
+    document.getElementById('result').textContent = '請完成所有拼音';
+    return;
+  }
+  const assembled = syllables.map(s => s.assembled).join('');
+  const correct = questions[currentQ].answer;
+  if (assembled === correct) {
+    document.getElementById('result').textContent = '✅ 正確！答案是：' + correct;
+    document.getElementById('nextBtn').style.display = "inline-block";
+  } else {
+    wrongCount++;
+    if (wrongCount >= 3) {
+      document.getElementById('result').textContent = '❌ 錯三次了，答案是：' + correct;
+      document.getElementById('nextBtn').style.display = "inline-block";
+    } else {
+      document.getElementById('result').textContent = `❌ 錯誤 (${wrongCount}/3)，再試一次`;
+    }
+  }
+}
+
+function nextQuestion() {
+  currentQ = (currentQ + 1) % questions.length;
+  document.getElementById('result').textContent = '';
+  init();
+}
+
+function playAudio() {
+  const audio = document.getElementById('audio');
+  audio.src = questions[currentQ].audio;
+  audio.play().catch(() => {});
+}
+
+init();
+</script>
+</body>
+</html>
